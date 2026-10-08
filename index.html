@@ -251,7 +251,7 @@ body {
 }
 
 /* The outer element follows the finger exactly. Only the inner one animates,
-   so the lift out of the tray never makes the shape lag behind the finger. */
+   so the pop on pick-up never makes the shape lag behind the finger. */
 .drag {
   position: fixed;
   left: 0;
@@ -262,7 +262,7 @@ body {
 }
 .drag-inner {
   transform-origin: 50% 100%;
-  transition: transform .14s var(--ease);
+  transition: transform .09s var(--ease);
 }
 
 /* ---------- overlays ---------- */
@@ -415,7 +415,7 @@ body {
     <h2>Paused</h2>
     <button class="btn" id="resume">Resume</button>
     <button class="btn quiet" id="restart">New game</button>
-    <p class="version">Version 2</p>
+    <p class="version">Version 3</p>
   </div>
 </div>
 
@@ -844,9 +844,10 @@ function startDrag(e, i) {
   inner.classList.add('drag-inner');
   inner.style.setProperty('--s', mt.size + 'px');
   inner.style.setProperty('--g', gap + 'px');
-  // Start small and over the tray piece, then grow into place above the finger.
+  // Show it above the finger at once, a touch small, and let it pop to full size.
+  // Animating it up from the tray made the pick-up feel late.
   inner.style.transition = 'none';
-  inner.style.transform = `translate(${from.left + from.width / 2 - x - W / 2}px,${from.bottom - y - H}px) scale(${ratio})`;
+  inner.style.transform = 'scale(.88)';
   el.appendChild(inner);
   document.body.appendChild(el);
   src.style.visibility = 'hidden';
