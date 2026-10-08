@@ -134,8 +134,10 @@ body {
   border-radius: 3px;
 }
 
-/* A block: four bevelled edges around a flat face */
+/* A block: four bevelled edges around a flat face. --glow lightens the whole
+   block; it is done with colour rather than a filter, which iPhones draw slowly. */
 .b {
+  --face: color-mix(in srgb, var(--base), #fff var(--glow, 0%));
   --hi: color-mix(in srgb, var(--face), #fff 45%);
   --lo: color-mix(in srgb, var(--face), #000 40%);
   --lt: color-mix(in srgb, var(--face), #fff 16%);
@@ -146,27 +148,28 @@ body {
   border-color: var(--hi) var(--rt) var(--lo) var(--lt);
   border-radius: calc(var(--s) * .07);
 }
-.c1 { --face: #d8403b; }
-.c2 { --face: #f0872a; }
-.c3 { --face: #f3b830; }
-.c4 { --face: #47c06a; }
-.c5 { --face: #3dbfe0; }
-.c6 { --face: #4d70e6; }
-.c7 { --face: #9a57d0; }
+.c1 { --base: #d8403b; }
+.c2 { --base: #f0872a; }
+.c3 { --base: #f3b830; }
+.c4 { --base: #47c06a; }
+.c5 { --base: #3dbfe0; }
+.c6 { --base: #4d70e6; }
+.c7 { --base: #9a57d0; }
 
 .cell.ghost { opacity: .45; }
-.cell.hl { filter: brightness(1.3); }
+.cell.hl { --glow: 32%; }
 
 .fx {
+  --glow: 60%;
   position: absolute;
   inset: 0;
   animation: clear .36s cubic-bezier(.4, 0, .9, .4) both;
   animation-delay: var(--d, 0ms);
 }
 @keyframes clear {
-  0%   { transform: scale(1); filter: brightness(1.5); }
-  35%  { transform: scale(1.12); filter: brightness(2.2); opacity: 1; }
-  100% { transform: scale(.1) rotate(14deg); filter: brightness(2.2); opacity: 0; }
+  0%   { transform: scale(1); opacity: 1; }
+  35%  { transform: scale(1.12); opacity: 1; }
+  100% { transform: scale(.1) rotate(14deg); opacity: 0; }
 }
 
 .fxlayer {
@@ -238,14 +241,17 @@ body {
   grid-auto-rows: var(--s);
   gap: var(--g);
 }
-.slot .piece { transition: opacity .2s, filter .2s; }
-.slot.nofit .piece { opacity: .5; filter: grayscale(.9) brightness(.8); }
-.deal { animation: deal .28s var(--ease) both; }
+.slot .piece { transition: opacity .2s; }
+.slot .b { transition: background-color .2s, border-color .2s; }
+.slot.nofit .piece { opacity: .6; }
+.slot.nofit .b { --base: #66709a; }
+.deal { animation: deal .28s var(--ease) backwards; }
 @keyframes deal {
   from { transform: scale(.5); opacity: 0; }
-  to   { transform: none; opacity: 1; }
 }
 
+/* The outer element follows the finger exactly. Only the inner one animates,
+   so the lift out of the tray never makes the shape lag behind the finger. */
 .drag {
   position: fixed;
   left: 0;
@@ -256,8 +262,7 @@ body {
 }
 .drag-inner {
   transform-origin: 50% 100%;
-  transition: transform .13s var(--ease);
-  filter: drop-shadow(0 12px 10px rgba(10, 16, 45, .35));
+  transition: transform .14s var(--ease);
 }
 
 /* ---------- overlays ---------- */
@@ -268,14 +273,13 @@ body {
   z-index: 10;
   display: grid;
   place-items: center;
-  background: rgba(16, 24, 58, .62);
-  -webkit-backdrop-filter: blur(5px);
-  backdrop-filter: blur(5px);
+  background: rgba(16, 24, 58, .74);
+  /* Fully hidden when closed, so it costs nothing while the game is being played. */
+  visibility: hidden;
   opacity: 0;
-  pointer-events: none;
-  transition: opacity .22s ease;
+  transition: opacity .22s ease, visibility 0s linear .22s;
 }
-.overlay.show { opacity: 1; pointer-events: auto; }
+.overlay.show { visibility: visible; opacity: 1; transition-delay: 0s; }
 
 .card {
   width: min(320px, 82vw);
@@ -337,6 +341,12 @@ body {
   color: #fff;
   background: rgba(255, 255, 255, .12);
   box-shadow: none;
+}
+.version {
+  margin: 16px 0 -6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #8fa3d6;
 }
 </style>
 </head>
@@ -405,6 +415,7 @@ body {
     <h2>Paused</h2>
     <button class="btn" id="resume">Resume</button>
     <button class="btn quiet" id="restart">New game</button>
+    <p class="version">Version 2</p>
   </div>
 </div>
 
@@ -822,25 +833,28 @@ function startDrag(e, i) {
   const from = src.getBoundingClientRect();
   const ratio = from.width / W;
 
+  const lift = e.pointerType === 'mouse' ? 30 : 70;
+  const x = e.clientX - W / 2;
+  const y = e.clientY - H - lift;
+
   const el = document.createElement('div');
   el.className = 'drag';
+  el.style.transform = `translate3d(${x}px,${y}px,0)`;
   const inner = buildPiece(p);
   inner.classList.add('drag-inner');
   inner.style.setProperty('--s', mt.size + 'px');
   inner.style.setProperty('--g', gap + 'px');
-  inner.style.transform = `scale(${ratio})`;
+  // Start small and over the tray piece, then grow into place above the finger.
+  inner.style.transition = 'none';
+  inner.style.transform = `translate(${from.left + from.width / 2 - x - W / 2}px,${from.bottom - y - H}px) scale(${ratio})`;
   el.appendChild(inner);
-  el.style.transform = `translate3d(${from.left + from.width / 2 - W / 2}px,${from.bottom - H}px,0)`;
   document.body.appendChild(el);
   src.style.visibility = 'hidden';
+  inner.getBoundingClientRect();
+  inner.style.transition = '';
+  inner.style.transform = 'none';
 
-  // Grow out of the tray and up to sit above the finger.
-  el.getBoundingClientRect();
-  el.style.transition = 'transform .13s cubic-bezier(.2,0,0,1)';
-  inner.style.transform = 'scale(1)';
-  setTimeout(() => { el.style.transition = ''; }, 140);
-
-  drag = { i, p, el, inner, mt, W, H, ratio, id: e.pointerId, lift: e.pointerType === 'mouse' ? 30 : 70, target: null, key: -2 };
+  drag = { i, p, el, inner, mt, W, H, ratio, lift, id: e.pointerId, target: null, key: -2 };
   try { slot.setPointerCapture(e.pointerId); } catch {}
   moveDrag(e);
 }
