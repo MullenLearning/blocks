@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>Blocks</title>
-<meta name="theme-color" content="#3a5394">
+<meta name="theme-color" content="#36508f">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -16,24 +16,29 @@
 :root {
   --gap: 2px;
   --pad: 5px;
-  --board: min(100vw - 32px, 100dvh - 430px, 560px);
+  /* The script replaces this with the real screen height; see fitScreen(). */
+  --app-h: 100dvh;
+  --board: min(100vw - 32px, var(--app-h) - 460px, 560px);
   --cell: calc((var(--board) - 2 * var(--pad) - 7 * var(--gap)) / 8);
   --ease: cubic-bezier(.2, 0, 0, 1);
 }
 
 *, *::before, *::after { box-sizing: border-box; }
 
-html, body {
-  margin: 0;
-  height: 100%;
+/* One flat colour, set on the page itself. iOS paints this same colour into
+   any part of the screen the page doesn't reach, so no seam can show. */
+html {
+  height: var(--app-h);
   overflow: hidden;
   overscroll-behavior: none;
   background: #36508f;
 }
 
 body {
-  position: fixed;
-  inset: 0;
+  position: relative;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
   font-family: ui-rounded, "SF Pro Rounded", "Arial Rounded MT Bold", system-ui, -apple-system, sans-serif;
   color: #fff;
   -webkit-font-smoothing: antialiased;
@@ -44,14 +49,14 @@ body {
   touch-action: none;
 }
 
+/* The extra space at the top keeps the header below the band that iOS blurs
+   under the status bar, which reaches about 36px past the safe area. */
 .app {
-  position: absolute;
-  inset: 0;
+  height: 100%;
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: calc(env(safe-area-inset-top, 0px) + 10px) 16px calc(env(safe-area-inset-bottom, 0px) + 10px);
-  background: linear-gradient(#3b5596, #304785);
+  padding: calc(env(safe-area-inset-top, 0px) + 40px) 16px calc(env(safe-area-inset-bottom, 0px) + 10px);
 }
 
 /* ---------- header ---------- */
@@ -253,7 +258,7 @@ body {
 /* The outer element follows the finger exactly. Only the inner one animates,
    so the pop on pick-up never makes the shape lag behind the finger. */
 .drag {
-  position: fixed;
+  position: absolute;
   left: 0;
   top: 0;
   z-index: 5;
@@ -268,7 +273,7 @@ body {
 /* ---------- overlays ---------- */
 
 .overlay {
-  position: fixed;
+  position: absolute;
   inset: 0;
   z-index: 10;
   display: grid;
@@ -415,7 +420,7 @@ body {
     <h2>Paused</h2>
     <button class="btn" id="resume">Resume</button>
     <button class="btn quiet" id="restart">New game</button>
-    <p class="version">Version 3</p>
+    <p class="version">Version 4</p>
   </div>
 </div>
 
@@ -926,6 +931,20 @@ document.addEventListener('contextmenu', e => e.preventDefault());
 document.addEventListener('dblclick', e => e.preventDefault());
 
 /* ---------- start ---------- */
+
+// Installed on an iPhone, the page is told it is shorter than the screen it
+// fills, by the height of the status bar, which leaves a dead strip along the
+// bottom. Lay the game out to the real screen height there instead.
+function fitScreen() {
+  let h = window.innerHeight;
+  const missing = screen.height - h;
+  if (navigator.standalone === true && window.innerWidth < h && missing > 0 && missing < 120) h = screen.height;
+  document.documentElement.style.setProperty('--app-h', h + 'px');
+}
+fitScreen();
+window.addEventListener('resize', fitScreen);
+window.addEventListener('orientationchange', fitScreen);
+window.addEventListener('pageshow', fitScreen);
 
 if (!load()) {
   reset();
