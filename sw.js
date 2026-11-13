@@ -21,7 +21,12 @@ self.addEventListener('fetch', e => {
   e.respondWith((async () => {
     const cache = await caches.open(CACHE);
     const cached = await cache.match(req, { ignoreSearch: true });
-    const fresh = fetch(req).then(res => {
+    // GitHub Pages lets browsers keep a page for 10 minutes without asking
+    // again. 'no-cache' makes the browser check with the server every time,
+    // so an update shows on the next launch instead of up to 10 minutes later.
+    // If a browser refuses that option, fall back to a plain request rather
+    // than getting stuck on the cached copy.
+    const fresh = fetch(req, { cache: 'no-cache' }).catch(() => fetch(req)).then(res => {
       if (res.ok) cache.put(req, res.clone());
       return res;
     });

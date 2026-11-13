@@ -18,11 +18,13 @@
   --pad: 5px;
   /* The script replaces this with the real screen height; see fitScreen(). */
   --app-h: 100dvh;
+  /* Tests can narrow this to mimic a screen with a status column. */
+  --app-w: 100vw;
   /* On a short screen, such as the Duo's outer one, height sets the size.
      178px covers the header, score and padding; dividing by 1.3 leaves the
      tray about a quarter of the board's height, enough for a five-tall piece. */
   --board: min(
-    100vw - 32px,
+    var(--app-w) - 32px,
     (var(--app-h) - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 178px) / 1.3,
     560px
   );
@@ -363,9 +365,11 @@ body {
 }
 
 /* ---------- landscape ----------
-   The iPhone Duo open, an iPad, or a phone on its side. Height is now the
-   short side, so the board takes the full height and the scores and pieces
-   move into a column to its right. The grid is exactly as tall as the board
+   Height is now the short side. The base layout here is for short landscape
+   screens, such as the Duo's outer screen turned on its side: the board takes
+   the full height and the scores and pieces move into a column to its right.
+   Taller ones (the Duo open, an iPad) and very wide ones (a phone on its side)
+   get their own layouts below. The grid is exactly as tall as its contents
    and sits in the middle of the screen. */
 
 @media (min-aspect-ratio: 5/4) {
@@ -378,7 +382,7 @@ body {
     --side: clamp(170px, 24vw, 260px);
     --board: min(
       var(--app-h) - var(--edge-t) - var(--edge-b) - 8px,
-      100vw - var(--edge-l) - var(--edge-r) - var(--side) - var(--col-gap),
+      var(--app-w) - var(--edge-l) - var(--edge-r) - var(--side) - var(--col-gap),
       860px
     );
     --score-h: clamp(64px, var(--board) * .14, 96px);
@@ -416,6 +420,46 @@ body {
   .slot { --s: min(var(--cell) * .5, (var(--side) - 12px) / 5, (var(--slot-h) - 12px) / 5); }
 }
 
+/* The Duo open, or an iPad: the board in the middle with the pieces under it,
+   as on the closed screen, and the scores in the space to its left. The board
+   is the height divided by 1.4, which leaves room for a tray 30% of the
+   board's height and some space above and below. Each side column gets half
+   of what's left of the width, but never less than 150px. */
+@media (min-aspect-ratio: 5/4) and (max-aspect-ratio: 7/4) and (min-height: 560px) {
+  :root {
+    --board: min(
+      (var(--app-h) - var(--edge-t) - var(--edge-b)) / 1.4,
+      var(--app-w) - var(--edge-l) - var(--edge-r) - 300px,
+      680px
+    );
+    --tray-h: calc(var(--board) * .3);
+    --side-w: calc((var(--app-w) - var(--edge-l) - var(--edge-r) - var(--board)) / 2);
+  }
+
+  .app {
+    grid-template-columns: var(--side-w) var(--board) var(--side-w);
+    grid-template-rows: 48px var(--score-h) calc(var(--board) - 48px - var(--score-h)) var(--tray-h);
+    grid-template-areas:
+      "best  board gear"
+      "score board ."
+      ".     board ."
+      ".     tray  .";
+    column-gap: 0;
+  }
+
+  /* Let the best score and the gear sit in different columns. */
+  .top { display: contents; }
+  .top .best { grid-area: best; justify-self: center; }
+  #gear { grid-area: gear; justify-self: end; align-self: center; }
+  .score { font-size: min(74px, var(--side-w) / 3.4); }
+
+  .tray {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-rows: none;
+  }
+  .slot { --s: min(var(--cell) * .5, (var(--board) / 3 - 12px) / 5, (var(--tray-h) - 12px) / 5); }
+}
+
 /* A phone on its side is so wide that there's room for a column on each side
    of the board: scores on the left, pieces on the right, each slot a third of
    the board's height. */
@@ -424,7 +468,7 @@ body {
     --side: clamp(160px, 19vw, 240px);
     --board: min(
       var(--app-h) - var(--edge-t) - var(--edge-b) - 8px,
-      100vw - var(--edge-l) - var(--edge-r) - 2 * var(--side) - 2 * var(--col-gap),
+      var(--app-w) - var(--edge-l) - var(--edge-r) - 2 * var(--side) - 2 * var(--col-gap),
       860px
     );
     --slot-h: calc(var(--board) / 3);
@@ -438,6 +482,34 @@ body {
       "score board tray";
   }
 }
+
+/* ---------- the Duo's status column ----------
+   Installed on the Duo, the page is told it is narrower than the screen by
+   the width of the column of status icons on the right, but it still draws
+   under that column. fitScreen() spots this and adds the class. The gear then
+   moves into the column as a round glass button in the bottom corner, centred
+   48px from the right edge (in line with the clock). It is placed from the
+   top using the real screen height, because the height the page is told can
+   be short. */
+html.side-bar #gear {
+  position: fixed;
+  left: var(--bar-x);
+  top: calc(var(--app-h) - 48px - max(env(safe-area-inset-bottom, 0px), 16px) - 8px);
+  z-index: 6;
+  width: 48px;
+  height: 48px;
+  margin: 0;
+  border-radius: 50%;
+  color: #fff;
+  background: rgba(255, 255, 255, .14);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, .3),
+    inset 0 0 0 1px rgba(255, 255, 255, .12),
+    0 6px 18px rgba(10, 16, 45, .28);
+  -webkit-backdrop-filter: blur(14px) saturate(160%);
+  backdrop-filter: blur(14px) saturate(160%);
+}
+html.side-bar #gear svg { width: 24px; height: 24px; }
 </style>
 </head>
 <body>
@@ -505,7 +577,7 @@ body {
     <h2>Paused</h2>
     <button class="btn" id="resume">Resume</button>
     <button class="btn quiet" id="restart">New game</button>
-    <p class="version">Version 5</p>
+    <p class="version">Version 6</p>
   </div>
 </div>
 
@@ -872,9 +944,9 @@ function setPaused(on) {
 
 let drag = null;
 
-// True when the tray sits beside the board rather than under it. Matches the
-// landscape styles.
-const besideMQ = matchMedia('(min-aspect-ratio: 5/4)');
+// True when the tray sits beside the board rather than under it: a phone on
+// its side, or a short landscape screen. Matches the landscape styles.
+const besideMQ = matchMedia('(min-aspect-ratio: 7/4), (min-aspect-ratio: 5/4) and (max-height: 559px)');
 
 function metrics() {
   const a = cells[0].getBoundingClientRect(), b = cells[1].getBoundingClientRect();
@@ -1054,7 +1126,18 @@ function fitScreen() {
   const tall = Math.max(screen.width, screen.height);
   const missing = tall - h;
   if (navigator.standalone === true && window.innerWidth < h && missing > 0 && missing < 120) h = tall;
-  document.documentElement.style.setProperty('--app-h', h + 'px');
+
+  // The Duo shows its status icons in a column down the right-hand side. The
+  // page is told it is narrower than the screen by that column's width, but
+  // still draws under it, so the gear can go there (see the styles).
+  const root = document.documentElement;
+  const wide = window.innerWidth > window.innerHeight;
+  const across = wide ? Math.max(screen.width, screen.height) : Math.min(screen.width, screen.height);
+  const bar = across - window.innerWidth;
+  const side = navigator.standalone === true && bar >= 40 && bar <= 140;
+  root.classList.toggle('side-bar', side);
+  if (side) root.style.setProperty('--bar-x', across - 72 + 'px');
+  root.style.setProperty('--app-h', h + 'px');
 }
 fitScreen();
 window.addEventListener('resize', fitScreen);
