@@ -18,7 +18,14 @@
   --pad: 5px;
   /* The script replaces this with the real screen height; see fitScreen(). */
   --app-h: 100dvh;
-  --board: min(100vw - 32px, var(--app-h) - 460px, 560px);
+  /* On a short screen, such as the Duo's outer one, height sets the size.
+     178px covers the header, score and padding; dividing by 1.3 leaves the
+     tray about a quarter of the board's height, enough for a five-tall piece. */
+  --board: min(
+    100vw - 32px,
+    (var(--app-h) - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 178px) / 1.3,
+    560px
+  );
   --cell: calc((var(--board) - 2 * var(--pad) - 7 * var(--gap)) / 8);
   --ease: cubic-bezier(.2, 0, 0, 1);
 }
@@ -96,9 +103,10 @@ body {
 .icon-btn:active { transform: scale(.96); }
 .icon-btn svg { width: 38px; height: 38px; }
 
+/* 80px fits the score at its largest. It is part of the 178px in --board. */
 .score-wrap {
   flex: 1 1 0;
-  min-height: 64px;
+  min-height: 80px;
   display: grid;
   place-items: center;
 }
@@ -353,6 +361,83 @@ body {
   font-weight: 600;
   color: #8fa3d6;
 }
+
+/* ---------- landscape ----------
+   The iPhone Duo open, an iPad, or a phone on its side. Height is now the
+   short side, so the board takes the full height and the scores and pieces
+   move into a column to its right. The grid is exactly as tall as the board
+   and sits in the middle of the screen. */
+
+@media (min-aspect-ratio: 5/4) {
+  :root {
+    --edge-t: max(env(safe-area-inset-top, 0px), 16px);
+    --edge-b: max(env(safe-area-inset-bottom, 0px), 16px);
+    --edge-l: max(env(safe-area-inset-left, 0px), 16px);
+    --edge-r: max(env(safe-area-inset-right, 0px), 16px);
+    --col-gap: clamp(20px, 3vw, 40px);
+    --side: clamp(170px, 24vw, 260px);
+    --board: min(
+      var(--app-h) - var(--edge-t) - var(--edge-b) - 8px,
+      100vw - var(--edge-l) - var(--edge-r) - var(--side) - var(--col-gap),
+      860px
+    );
+    --score-h: clamp(64px, var(--board) * .14, 96px);
+    --slot-h: calc((var(--board) - 48px - var(--score-h)) / 3);
+  }
+
+  .app {
+    display: grid;
+    grid-template-columns: var(--board) var(--side);
+    grid-template-rows: 48px var(--score-h) calc(var(--board) - 48px - var(--score-h));
+    grid-template-areas:
+      "board top"
+      "board score"
+      "board tray";
+    column-gap: var(--col-gap);
+    place-content: center;
+    align-items: stretch;
+    padding: var(--edge-t) var(--edge-r) var(--edge-b) var(--edge-l);
+  }
+
+  .board-wrap { grid-area: board; }
+  .top { grid-area: top; width: auto; min-width: 0; }
+  .score-wrap { grid-area: score; min-height: 0; }
+  .score { font-size: min(74px, var(--side) / 3.4); white-space: nowrap; }
+
+  .tray {
+    grid-area: tray;
+    width: auto;
+    max-width: none;
+    grid-template-columns: 1fr;
+    grid-template-rows: repeat(3, minmax(0, 1fr));
+  }
+  /* Big enough to read at a glance, small enough that a five-long piece
+     still fits its slot either way round. */
+  .slot { --s: min(var(--cell) * .5, (var(--side) - 12px) / 5, (var(--slot-h) - 12px) / 5); }
+}
+
+/* A phone on its side is so wide that there's room for a column on each side
+   of the board: scores on the left, pieces on the right, each slot a third of
+   the board's height. */
+@media (min-aspect-ratio: 7/4) {
+  :root {
+    --side: clamp(160px, 19vw, 240px);
+    --board: min(
+      var(--app-h) - var(--edge-t) - var(--edge-b) - 8px,
+      100vw - var(--edge-l) - var(--edge-r) - 2 * var(--side) - 2 * var(--col-gap),
+      860px
+    );
+    --slot-h: calc(var(--board) / 3);
+  }
+
+  .app {
+    grid-template-columns: var(--side) var(--board) var(--side);
+    grid-template-rows: 48px calc(var(--board) - 48px);
+    grid-template-areas:
+      "top board tray"
+      "score board tray";
+  }
+}
 </style>
 </head>
 <body>
@@ -420,7 +505,7 @@ body {
     <h2>Paused</h2>
     <button class="btn" id="resume">Resume</button>
     <button class="btn quiet" id="restart">New game</button>
-    <p class="version">Version 4</p>
+    <p class="version">Version 5</p>
   </div>
 </div>
 
@@ -787,6 +872,10 @@ function setPaused(on) {
 
 let drag = null;
 
+// True when the tray sits beside the board rather than under it. Matches the
+// landscape styles.
+const besideMQ = matchMedia('(min-aspect-ratio: 5/4)');
+
 function metrics() {
   const a = cells[0].getBoundingClientRect(), b = cells[1].getBoundingClientRect();
   return { x: a.left, y: a.top, size: a.width, step: b.left - a.left };
@@ -838,15 +927,34 @@ function startDrag(e, i) {
   const from = src.getBoundingClientRect();
   const ratio = from.width / W;
 
-  const lift = e.pointerType === 'mouse' ? 30 : 70;
-  const x = e.clientX - W / 2;
-  const y = e.clientY - H - lift;
+  // Where the held piece sits relative to the finger (ax, ay) and the point
+  // it pops from (ox, oy). With the tray under the board it floats above the
+  // finger. With the tray to the right, the board fills the screen top to
+  // bottom, so there's no room below it to hold a piece over the bottom row.
+  // There it floats up and to the left instead, clear of a thumb coming in
+  // from the bottom right.
+  const touch = e.pointerType !== 'mouse';
+  let ax, ay, ox, oy;
+  if (besideMQ.matches) {
+    ax = W + (touch ? 34 : 16);
+    ay = H / 2 + (touch ? 26 : 8);
+    ox = 1;
+    oy = .5;
+  } else {
+    ax = W / 2;
+    ay = H + (touch ? 70 : 30);
+    ox = .5;
+    oy = 1;
+  }
+  const x = e.clientX - ax;
+  const y = e.clientY - ay;
 
   const el = document.createElement('div');
   el.className = 'drag';
   el.style.transform = `translate3d(${x}px,${y}px,0)`;
   const inner = buildPiece(p);
   inner.classList.add('drag-inner');
+  inner.style.transformOrigin = `${ox * 100}% ${oy * 100}%`;
   inner.style.setProperty('--s', mt.size + 'px');
   inner.style.setProperty('--g', gap + 'px');
   // Show it above the finger at once, a touch small, and let it pop to full size.
@@ -860,7 +968,7 @@ function startDrag(e, i) {
   inner.style.transition = '';
   inner.style.transform = 'none';
 
-  drag = { i, p, el, inner, mt, W, H, ratio, lift, id: e.pointerId, target: null, key: -2 };
+  drag = { i, p, el, inner, mt, W, H, ratio, ax, ay, ox, oy, id: e.pointerId, target: null, key: -2 };
   try { slot.setPointerCapture(e.pointerId); } catch {}
   moveDrag(e);
 }
@@ -868,8 +976,8 @@ function startDrag(e, i) {
 function moveDrag(e) {
   const d = drag;
   if (!d || e.pointerId !== d.id) return;
-  const x = e.clientX - d.W / 2;
-  const y = e.clientY - d.H - d.lift;
+  const x = e.clientX - d.ax;
+  const y = e.clientY - d.ay;
   d.el.style.transform = `translate3d(${x}px,${y}px,0)`;
 
   const t = snap(d.p.m, (y - d.mt.y) / d.mt.step, (x - d.mt.x) / d.mt.step);
@@ -900,7 +1008,11 @@ function endDrag(e, cancelled) {
   d.el.style.transition = 'transform .2s cubic-bezier(.2,0,0,1)';
   d.inner.style.transitionDuration = '.2s';
   d.inner.style.transform = `scale(${d.ratio})`;
-  d.el.style.transform = `translate3d(${to.left + to.width / 2 - d.W / 2}px,${to.bottom - d.H}px,0)`;
+  // Shrinking around (ox, oy) keeps that point still, so shift the full-size
+  // box until the shrunk piece lands exactly on the one in the tray.
+  const bx = to.left - d.ox * d.W * (1 - d.ratio);
+  const by = to.top - d.oy * d.H * (1 - d.ratio);
+  d.el.style.transform = `translate3d(${bx}px,${by}px,0)`;
   slot._returning = d.el;
   setTimeout(() => {
     if (slot._returning === d.el) {
@@ -934,11 +1046,14 @@ document.addEventListener('dblclick', e => e.preventDefault());
 
 // Installed on an iPhone, the page is told it is shorter than the screen it
 // fills, by the height of the status bar, which leaves a dead strip along the
-// bottom. Lay the game out to the real screen height there instead.
+// bottom. Lay the game out to the real screen height there instead. The long
+// side of the screen is used rather than screen.height, so this still holds
+// on a screen like the Duo's whose natural way up may be landscape.
 function fitScreen() {
   let h = window.innerHeight;
-  const missing = screen.height - h;
-  if (navigator.standalone === true && window.innerWidth < h && missing > 0 && missing < 120) h = screen.height;
+  const tall = Math.max(screen.width, screen.height);
+  const missing = tall - h;
+  if (navigator.standalone === true && window.innerWidth < h && missing > 0 && missing < 120) h = tall;
   document.documentElement.style.setProperty('--app-h', h + 'px');
 }
 fitScreen();
